@@ -1,0 +1,61 @@
+name: Food Deals & Rescue Alerts
+
+on:
+  schedule:
+    # Runs every 5 minutes on GitHub's cloud runners
+    - cron: "*/5 * * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: food-deal-alerts
+  cancel-in-progress: false
+
+jobs:
+  check-deals:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: "pip"
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Restore bot state cache
+        id: cache-state
+        uses: actions/cache/restore@v4
+        with:
+          path: state/bot_state.json
+          key: bot-state-${{ github.run_id }}
+          restore-keys: |
+            bot-state-
+
+      - name: Run live deal scan & Telegram update handler
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          TARGET_LOCATION: ${{ vars.TARGET_LOCATION || 'BTM 2nd Stage, Bangalore' }}
+          MIN_PERCENT_OFF: ${{ vars.MIN_PERCENT_OFF || '40' }}
+          MIN_FLAT_OFF: ${{ vars.MIN_FLAT_OFF || '100' }}
+          SWIGGY_COOKIES_JSON: ${{ secrets.SWIGGY_COOKIES_JSON }}
+          ZOMATO_COOKIES_JSON: ${{ secrets.ZOMATO_COOKIES_JSON }}
+          PROXY_URL: ${{ secrets.PROXY_URL }}
+          STATE_FILE: state/bot_state.json
+        run: python bot.py --once
+
+      - name: Save bot state cache
+        if: always()
+        uses: actions/cache/save@v4
+        with:
+          path: state/bot_state.json
+          key: bot-state-${{ github.run_id }}
